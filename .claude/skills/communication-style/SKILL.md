@@ -1,4 +1,5 @@
 ---
+name: communication-style
 description: "Analyzes communication style in messages identifying assertive, passive, aggressive, or passive-aggressive patterns"
 ---
 

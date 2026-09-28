@@ -54,6 +54,7 @@ Claude is never told *how* to apply either discipline in the calling code — ea
 | Model | Claude (configurable via `ANTHROPIC_MODEL`) |
 | Schema validation | Zod + `zod-to-json-schema` |
 | Language | TypeScript (ESM), run via `tsx` |
+| Testing | Vitest |
 | Domain expertise | Claude Skills (`.claude/skills/*/SKILL.md`) |
 
 ## Project Structure
@@ -68,10 +69,13 @@ Claude is never told *how* to apply either discipline in the calling code — ea
 │           └── SKILL.md        # Assertive/passive/aggressive/passive-aggressive detection
 ├── src/
 │   ├── email-reviewer.ts       # reviewEmail() — the reusable, exported core
+│   ├── email-reviewer.test.ts  # Vitest suite exercising reviewEmail() against sample-emails.ts
 │   ├── sample-emails.ts        # Labeled fixtures for demos and tests
 │   └── index.ts                # CLI entry point that exercises reviewEmail()
 ├── .env.example
 ├── package.json
+├── tsconfig.json
+├── vitest.config.ts
 └── README.md
 ```
 
@@ -97,6 +101,16 @@ npm start
 - `Error: ANTHROPIC_MODEL is not set` — make sure `.env` exists (`cp .env.example .env`).
 - `Error: API key not found` — set `ANTHROPIC_API_KEY` and `ANTHROPIC_BASE_URL` in `.env`.
 
+## Testing
+
+```bash
+npm test
+```
+
+Runs the Vitest suite in [`src/email-reviewer.test.ts`](src/email-reviewer.test.ts), which calls `reviewEmail()` against every fixture in [`src/sample-emails.ts`](src/sample-emails.ts) and asserts the returned `overallTone` matches each fixture's `expectedTone`, plus basic shape checks on the rest of the result.
+
+These are integration tests, not mocked unit tests — each one makes a real call through the Claude Agent SDK, so it needs the same `.env` setup as `npm start` and takes noticeably longer than a typical test suite (a 60s per-test timeout is configured in `vitest.config.ts` to accommodate that). Because it depends on live model output, expect occasional flakiness (e.g. an SDK-level structured-output retry failure) rather than 100% determinism.
+
 ## Sample Output
 
 Given a casual, under-specified email like:
@@ -112,4 +126,4 @@ the agent returns a structured result identifying it as `too-casual`, flags issu
 - **Decoupled for reuse.** `reviewEmail()` in [`src/email-reviewer.ts`](src/email-reviewer.ts) has no CLI or I/O dependencies baked in:
   - **Embed it** in a larger application by importing the function directly.
   - **Deploy it as a service** by wrapping it in an HTTP handler (Express route, serverless function, etc.) — the same skill-discovery and structured-output behavior carries over unchanged.
-  - **Unit test it** against the labeled fixtures in [`src/sample-emails.ts`](src/sample-emails.ts) (each with an `expectedTone`) from a runner like Vitest or Jest, asserting on `overallTone`, `communicationStyle`, and `score` without needing the CLI harness.
+  - **Test it** against the labeled fixtures in [`src/sample-emails.ts`](src/sample-emails.ts) (each with an `expectedTone`) — see [`src/email-reviewer.test.ts`](src/email-reviewer.test.ts) and the [Testing](#testing) section above.
