@@ -4,6 +4,13 @@ An AI agent that reviews professional emails against two independent domains of 
 
 Built on the **Claude Agent SDK**, this project shows how to package domain expertise as reusable, composable **Skills** that an agent discovers and applies autonomously, rather than hard-coding a single monolithic prompt.
 
+## Background
+
+This project started as a Udacity course exercise on the Claude Agent SDK and has since been extended beyond the original scope. My additions:
+
+- **Integration test suite** — a Vitest suite that runs `reviewEmail()` against every labeled fixture and asserts both the classified tone and the shape of the result (see [Testing](#testing)).
+- **Structured observability** — JSON logs of every tool call via the SDK's `PreToolUse`/`PostToolUse` hooks, plus per-run cost, token usage, duration, and turn count (see [Observability](#observability)).
+
 ## The Problem
 
 Teams reviewing outbound email rarely apply consistent standards. One reviewer flags tone, another flags structure, and "communication style" (assertive vs. passive-aggressive, for example) is almost never assessed at all. This agent encodes both review disciplines as expert Skills and runs them together, every time, with a predictable JSON contract downstream systems can rely on.
@@ -110,6 +117,21 @@ npm test
 Runs the Vitest suite in [`src/email-reviewer.test.ts`](src/email-reviewer.test.ts), which calls `reviewEmail()` against every fixture in [`src/sample-emails.ts`](src/sample-emails.ts) and asserts the returned `overallTone` matches each fixture's `expectedTone`, plus basic shape checks on the rest of the result.
 
 These are integration tests, not mocked unit tests — each one makes a real call through the Claude Agent SDK, so it needs the same `.env` setup as `npm start` and takes noticeably longer than a typical test suite (a 60s per-test timeout is configured in `vitest.config.ts` to accommodate that). Because it depends on live model output, expect occasional flakiness (e.g. an SDK-level structured-output retry failure) rather than 100% determinism.
+
+## Observability
+
+`reviewEmail()` emits structured (JSON) logs via the Agent SDK's hook system rather than plain text:
+
+- **`tool_start` / `tool_end`** — from `PreToolUse`/`PostToolUse` hooks, one pair per tool call (Skill discovery, structured output validation, etc.), correlated by `toolUseId`.
+- **`run_complete`** — from the SDK's terminal `result` message, once per `reviewEmail()` call: `totalCostUsd`, `usage` (input/output/cache tokens), `durationMs`, `durationApiMs`, and `numTurns`.
+
+```json
+{"event":"tool_start","tool":"Skill","toolUseId":"toolu_01Pgy..."}
+{"event":"tool_end","tool":"Skill","toolUseId":"toolu_01Pgy..."}
+{"event":"run_complete","subtype":"success","isError":false,"durationMs":23203,"totalCostUsd":0.1866,"numTurns":6,"usage":{"input_tokens":12,"output_tokens":1106,"cache_read_input_tokens":36955,"cache_creation_input_tokens":20587}}
+```
+
+This gives per-call cost tracking and tool-level tracing for free, in a shape a log aggregator (or a quick `| jq`) can consume directly. Swapping `console.log` for a real logger, or piping these events to an observability backend, is a drop-in change — the log call sites are isolated in `logToolStart`, `logToolEnd`, and `logResultMetrics` in [`src/email-reviewer.ts`](src/email-reviewer.ts).
 
 ## Sample Output
 

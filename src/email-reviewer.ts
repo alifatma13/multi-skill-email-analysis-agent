@@ -1,19 +1,25 @@
 /**
  * Email Etiquette Reviewer Agent
  *
- * Deliverable: reviewEmail() function using Claude Agent SDK
+ * reviewEmail(): the core review function, built on the Claude Agent SDK
  * with multiple skills loaded from .claude/skills/
  *
  * Demonstrates:
  * - Multiple skills (email-etiquette, communication-style)
  * - Skill discovery by Claude based on descriptions
- * - Combining Skills (L08) with Structured Outputs (L07)
+ * - Combining Skills with Structured Outputs
  */
 
 import "dotenv/config";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import {
+  query,
+  type HookCallback,
+  type PreToolUseHookInput,
+  type PostToolUseHookInput,
+  type SDKResultMessage,
+} from "@anthropic-ai/claude-agent-sdk";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -101,6 +107,44 @@ Return the analysis with:
 - revisedEmail: optionally provide an improved version if score is below 80`;
 
 // -----------------------------------------------------------------------------
+// Observability: structured logs for tool calls and per-run cost/usage
+// -----------------------------------------------------------------------------
+
+const logToolStart: HookCallback = async (input) => {
+  if (input.hook_event_name !== "PreToolUse") return {};
+  const { tool_name, tool_use_id } = input as PreToolUseHookInput;
+  console.log(
+    JSON.stringify({ event: "tool_start", tool: tool_name, toolUseId: tool_use_id })
+  );
+  return {};
+};
+
+const logToolEnd: HookCallback = async (input) => {
+  if (input.hook_event_name !== "PostToolUse") return {};
+  const { tool_name, tool_use_id } = input as PostToolUseHookInput;
+  console.log(
+    JSON.stringify({ event: "tool_end", tool: tool_name, toolUseId: tool_use_id })
+  );
+  return {};
+};
+
+// Fires once per query() call, on both success and error result subtypes.
+const logResultMetrics = (message: SDKResultMessage) => {
+  console.log(
+    JSON.stringify({
+      event: "run_complete",
+      subtype: message.subtype,
+      isError: message.is_error,
+      durationMs: message.duration_ms,
+      durationApiMs: message.duration_api_ms,
+      numTurns: message.num_turns,
+      totalCostUsd: message.total_cost_usd,
+      usage: message.usage,
+    })
+  );
+};
+
+// -----------------------------------------------------------------------------
 // Exported Function: reviewEmail()
 // -----------------------------------------------------------------------------
 
@@ -114,6 +158,10 @@ export async function reviewEmail(
       settingSources: ["project"],
       model,
       allowedTools: ["Skill", "Read", "Grep", "Glob"],
+      hooks: {
+        PreToolUse: [{ hooks: [logToolStart] }],
+        PostToolUse: [{ hooks: [logToolEnd] }],
+      },
       // Enforce structured output matching our schema
       outputFormat: {
         type: "json_schema",
@@ -121,15 +169,8 @@ export async function reviewEmail(
       },
     },
   })) {
-    if (message.type === "assistant") {
-      const content = message.message?.content;
-      if (Array.isArray(content)) {
-        for (const block of content) {
-          if (block.type === "tool_use") {
-            console.log(`[Tool]: ${block.name}`);
-          }
-        }
-      }
+    if (message.type === "result") {
+      logResultMetrics(message);
     }
     // Handle successful structured output
     if (

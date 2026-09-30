@@ -1,7 +1,7 @@
 {
-  "name": "email-etiquette-skill",
+  "name": "multi-skill-email-analysis-agent",
   "version": "1.0.0",
-  "description": "Demo: Create a Claude Skill for email etiquette analysis that agents can invoke for professional communication guidance",
+  "description": "A multi-skill email analysis agent built with the Claude Agent SDK, combining composable Skills (email etiquette, communication style) with schema-enforced structured output",
   "main": "src/index.ts",
   "scripts": {
     "start": "npx tsx src/index.ts",
